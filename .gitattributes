@@ -1,27 +1,3 @@
-# Line endings are normalised to LF inside the repository whatever machine
-# commits, while the working copy stays native. Without this, committing from
-# Windows can put CRLF in the repo, and a CRLF `gradlew` fails on Linux and
-# macOS with a "bad interpreter" error that gives no hint what is wrong.
-* text=auto
-
-# The Gradle wrapper script is read by sh, so it is LF everywhere, including
-# in a Windows checkout. Its .bat twin is the opposite.
-gradlew text eol=lf
-*.bat text eol=crlf
-*.cmd text eol=crlf
-
-# Never line-ending-mangle these.
-*.jar binary
-*.png binary
-*.jpg binary
-*.jpeg binary
-*.webp binary
-*.ico binary
-*.ttf binary
-*.otf binary
-*.woff binary
-*.woff2 binary
 *.apk binary
 *.aab binary
-*.jks binary
-*.keystore binary
+* text=auto
