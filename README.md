@@ -67,15 +67,15 @@ on a computer to see what went wrong is a backup you cannot trust.
 
 ## What it does
 
-**Home screen** — pages of icons on a grid you choose, from 3x3 up to 10x10.
+**Home screen** - pages of icons on a grid you choose, from 3x3 up to 10x10.
 Drag to rearrange, drop one icon on another to make a folder, drag to the top of
 the screen to remove. Carry an icon to the right edge of the last page and a new
 page is created under it.
 
-**Pages** — tap the page dots, or hold empty space and choose *Edit pages*. Add,
+**Pages** - tap the page dots, or hold empty space and choose *Edit pages*. Add,
 delete, drag to reorder, and pick which page Home returns to.
 
-**App drawer** — swipe up from anywhere on the home screen. Grid or list, with
+**App drawer** - swipe up from anywhere on the home screen. Grid or list, with
 search that ranks sensibly: typing `ph` puts Phone and Photos above JPhone and
 JPhotos, and `gm` finds Google Maps. Enter opens the top result.
 
@@ -90,33 +90,33 @@ each, which is half a finger, so the letter under the thumb is shown in a bubble
 beside it and the finger can correct itself on the way. It is hidden while a
 search is typed, because an alphabet is not what is on screen then.
 
-**Widgets** — hold empty space, choose *Widgets*. Sizes are shown in grid cells
+**Widgets** - hold empty space, choose *Widgets*. Sizes are shown in grid cells
 rather than dp. Hold a placed widget and choose *Resize* for drag handles.
 
-**Long-press an icon** — the app's own shortcuts first, then Change icon, App
+**Long-press an icon** - the app's own shortcuts first, then Change icon, App
 info, Remove, and Uninstall for anything that is not a system app. In the
 drawer: the same shortcuts, then Add to home screen, App info, Hide from drawer,
 Uninstall. Inside an open folder a hold lifts the app: move the finger to
 rearrange the folder or to drag the app out onto the desktop, or let go without
 moving for the same menu, where Remove reads *Remove from folder*.
 
-**App shortcuts** — the things an app publishes for itself: *New tab*, *New
+**App shortcuts** - the things an app publishes for itself: *New tab*, *New
 incognito tab*, *New message*, a contact you speak to often. They sit at the top
 of the long-press menu with their own icons. Tap one to open it; **hold one to
 put it on the home screen** as an icon of its own, which is the only way to get
-there — a launcher cannot pin something the publishing app has not offered.
+there - a launcher cannot pin something the publishing app has not offered.
 
 Up to four are shown, ranked by the app that published them, which is both what
 the platform's own menus do and about where the menu stops fitting on a short
 screen.
 
-**Rename** — an app's label is the app's, and it is often not what you would
+**Rename** - an app's label is the app's, and it is often not what you would
 call it: three things all called Messages, a bank whose app is named after a
 product nobody uses, an app in a language you do not read. Any icon on the home
 screen can be given a name of its own, and clearing the field puts the app's own
 name back.
 
-**Change icon** — pick any picture for any icon on the home screen. It is
+**Change icon** - pick any picture for any icon on the home screen. It is
 cropped square from the middle and then masked to whatever icon shape is set, so
 a chosen icon is the same shape as everything around it.
 
@@ -130,18 +130,18 @@ Uninstall always asks first. It sits one row below Remove on a surface people
 spend their time dragging things around on, and it is the only thing in that
 menu that putting the icon back will not undo.
 
-**An icon whose app has gone** — tapping it offers to fetch the app from the
+**An icon whose app has gone** - tapping it offers to fetch the app from the
 Play Store, or to take the icon off the home screen. Icons outlive their apps
 on purpose: uninstalling something should not silently rearrange the home
 screen, and a restored backup names apps this phone may never have had.
 
-**Private space** — Android 15's second, lockable profile. FreeLauncher keeps
+**Private space** - Android 15's second, lockable profile. FreeLauncher keeps
 its apps out of the drawer and out of search entirely, and shows them in one
 place: **hold the grab handle at the top of the app drawer**.
 
 There is no row at the end of the drawer, no header and no gap, because the
 point of a private space is that its existence is not advertised. On a phone
-with no private profile the gesture is not wired up at all — holding the handle
+with no private profile the gesture is not wired up at all - holding the handle
 behaves exactly like tapping it, so it cannot even be used to find out whether
 one is set up.
 
@@ -157,13 +157,13 @@ rather than pushing your arrangement around.
 
 That menu also offers **Add to home screen**. The icon it places carries
 Android's private-profile badge and opens the private copy of the app, not the
-personal one — and it is a visible icon on your home screen, which is worth
+personal one - and it is a visible icon on your home screen, which is worth
 knowing before you place one. Tapping it while private space is locked opens the
 panel to unlock rather than doing nothing: an app in a locked space cannot start
 at all, and Android does not report that as a failure, so there is nothing to
 notice unless the launcher checks first.
 
-**Icon packs** — any pack from Play that works with Nova or ADW works here.
+**Icon packs** - any pack from Play that works with Nova or ADW works here.
 There has never been an Android API for this; what exists is a convention ADW
 started in 2010 and everyone copied, and thousands of packs follow it exactly.
 
@@ -176,7 +176,7 @@ overlay, at its own scale. A pack that offers no such treatment leaves them to
 the launcher's own shaping, which is better than a home screen where a fifth of
 the icons match and the rest do not.
 
-**Notification dots** — a dot on apps that have something waiting, including on
+**Notification dots** - a dot on apps that have something waiting, including on
 a closed folder when something inside it does. Off until you turn it on, because
 turning it on asks for Android's notification access, and that same grant lets
 an app read the text of every notification on the phone. FreeLauncher reads the
@@ -187,12 +187,12 @@ Ongoing notifications are ignored on purpose. A media player, a download and
 "this app is running in the background" are permanent while they last, so a dot
 for them would be a dot that never goes out and never means anything.
 
-**Customisation** — theme (system / light / dark / AMOLED black), eight accent
+**Customisation** - theme (system / light / dark / AMOLED black), eight accent
 colours, icon shape, icon pack, icon and label size, wallpaper dimming, grid and
 dock columns, drawer style and opacity, hidden apps, status bar, swipe-down
 action.
 
-**Shortcuts from other apps** — a browser's *Add to Home screen*, and anything
+**Shortcuts from other apps** - a browser's *Add to Home screen*, and anything
 else that pins a shortcut, arrives through `requestPinShortcut` and is confirmed
 before it is placed. If one later refuses to open, tapping it says why: the app
 no longer has it, the app has disabled it (with the app's own reason), or the
@@ -200,7 +200,7 @@ app still lists it and simply refused. Each of those offers to take the icon
 off. It used to do nothing at all, which is indistinguishable from the tap not
 registering.
 
-**Screen readers** — every icon, in the drawer, on the home screen, in the dock
+**Screen readers** - every icon, in the drawer, on the home screen, in the dock
 and inside folders, is a labelled button with an open action and a menu action.
 
 This needed saying out loud because of how the launcher is built: every gesture
@@ -224,7 +224,7 @@ The other one is not this launcher's to fix. `INSTALL_SHORTCUT`, the pre-Android
 way for an app to add a shortcut, is refused outright by Android 15 and later:
 the system drops the broadcast before any launcher sees it, logging *"no longer
 supported. It will not be delivered."* FreeLauncher still listens for it, both
-in the manifest and at runtime, which is what makes it work on Android 8 to 14 —
+in the manifest and at runtime, which is what makes it work on Android 8 to 14 -
 but on a newer phone an app that still uses that API cannot add a shortcut to
 any launcher, stock ones included.
 
@@ -280,7 +280,7 @@ sit on a half cell. `icon` is a PNG.
 
 Stored intents are `Intent.toUri(URI_INTENT_SCHEME)` strings, but they are read
 with a regex rather than `Intent.parseUri`: Nova adds keys the platform parser
-does not know — `extendedLaunchFlags` is on every app row — and on the versions
+does not know - `extendedLaunchFlags` is on every app row - and on the versions
 where `parseUri` throws on an unknown key, that would fail every row instead of
 degrading. For an installed app the stored intent is not what should launch it
 anyway; the component is resolved through `LauncherApps` at launch time, so the
