@@ -1,0 +1,3 @@
+*.apk binary
+*.aab binary
+* text=auto
