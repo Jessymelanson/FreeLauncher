@@ -5,7 +5,8 @@ An Android home screen that restores Nova Launcher backups.
 No accounts, no activation key, no paid tier, no telemetry, nothing to unlock. Install it,
 make it your home screen, and it works.
 
-This repository holds the signed APK. The source is not published here.
+This repository holds the source and the signed APK. Build it yourself, or
+install the release and check it against the hash below.
 
 ## Restoring a Nova backup
 

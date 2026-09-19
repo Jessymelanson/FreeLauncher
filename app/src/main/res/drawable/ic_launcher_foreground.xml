@@ -1,0 +1,33 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+    A four-cell home grid with the bottom-right cell broken out as a circle;
+    the app drawer, the thing that swipes up out of the grid.
+
+    Everything sits inside the 72dp safe zone (18dp to 90dp on this 108dp
+    canvas). Drawing outside it is not an error and not visible on a square
+    mask, which is exactly why it gets missed: a round or squircle mask clips
+    it and only some phones show the damage.
+-->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+
+    <!-- Top-left, top-right, bottom-left: rounded cells. -->
+    <path
+        android:fillColor="#FFFFFFFF"
+        android:pathData="M32,30 h14 a7,7 0 0 1 7,7 v14 a7,7 0 0 1 -7,7 h-14 a7,7 0 0 1 -7,-7 v-14 a7,7 0 0 1 7,-7 z" />
+    <path
+        android:fillColor="#FFFFFFFF"
+        android:pathData="M62,30 h14 a7,7 0 0 1 7,7 v14 a7,7 0 0 1 -7,7 h-14 a7,7 0 0 1 -7,-7 v-14 a7,7 0 0 1 7,-7 z" />
+    <path
+        android:fillColor="#FFFFFFFF"
+        android:pathData="M32,60 h14 a7,7 0 0 1 7,7 v14 a7,7 0 0 1 -7,7 h-14 a7,7 0 0 1 -7,-7 v-14 a7,7 0 0 1 7,-7 z" />
+
+    <!-- Bottom-right, softened to a circle and dimmed to read as separate. -->
+    <path
+        android:fillColor="#FFFFFFFF"
+        android:fillAlpha="0.62"
+        android:pathData="M69,60 m-14,14 a14,14 0 1,0 28,0 a14,14 0 1,0 -28,0" />
+</vector>

@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- API 31+. Same two files as backup_rules.xml, in the newer schema. -->
+<data-extraction-rules>
+    <cloud-backup>
+        <include domain="sharedpref" path="freelauncher.xml" />
+        <include domain="file" path="layout.json" />
+    </cloud-backup>
+    <device-transfer>
+        <include domain="sharedpref" path="freelauncher.xml" />
+        <include domain="file" path="layout.json" />
+    </device-transfer>
+</data-extraction-rules>

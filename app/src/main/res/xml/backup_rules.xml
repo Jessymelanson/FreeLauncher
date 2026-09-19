@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+    API 30 and below.
+
+    Only the layout and the settings travel to a new phone. Naming them
+    explicitly is what leaves everything else out; there is no exclude here
+    because an include list is already a whitelist, and lint rightly rejects
+    excluding something that was never included.
+
+    What is deliberately left behind is the icons directory. Every file in it
+    is a bitmap belonging to an app that may not exist on the new device, and
+    the ones that do exist will render their own icons perfectly well.
+-->
+<full-backup-content>
+    <include domain="sharedpref" path="freelauncher.xml" />
+    <include domain="file" path="layout.json" />
+</full-backup-content>

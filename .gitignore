@@ -1,0 +1,26 @@
+# Build output.
+build/
+.gradle/
+.cxx/
+
+# Machine-specific: one line pointing at this laptop's SDK. Android Studio
+# regenerates it on a fresh clone, or write it by hand:
+#     sdk.dir=C\:/path/to/Android/Sdk
+local.properties
+
+# Signing. The real key lives outside every project, in ~/JApps-Signing/,
+# and must never arrive here by any route.
+keystore.properties
+*.jks
+*.keystore
+
+# Release builds are published as GitHub Releases, not committed. Every
+# rebuild would otherwise add another ~17MB copy to history, and git does
+# not forget: the clone stays big forever, even after a delete.
+*.apk
+*.aab
+
+# IDE
+.idea/
+*.iml
+.DS_Store
