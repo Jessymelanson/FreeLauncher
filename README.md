@@ -51,6 +51,29 @@ aapt dump permissions FreeLauncher-release.apk
 Restoring a backup is no exception. The `.novabackup` file is read on the
 device and never leaves it.
 
+## Install it
+
+Android will not install an app from outside a store until you allow it once.
+That is a normal part of installing anything this way, not a sign of a problem.
+
+1. On the phone, open [Releases](../../releases) and download
+   `FreeLauncher-release.apk`.
+
+2. Tap the downloaded file. Android will say it is not allowed to install unknown
+   apps from this source.
+
+3. Tap **Settings** in that message, turn on **Allow from this source**, then press
+   back and tap **Install**.
+
+4. Make it your home screen. Press the Home button and Android will ask which
+   launcher to use, so pick FreeLauncher and choose Always. If it does not ask,
+   it is under Settings, then Apps, then Default apps, then Home app.
+
+You can turn that permission back off afterwards. It applies to the app you
+downloaded with, usually your browser, and not to the phone as a whole.
+
+Updating later is the same steps, and installing over the top keeps your data.
+
 ## Verify what you downloaded
 
 | File | SHA-256 |
