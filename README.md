@@ -1,4 +1,4 @@
-﻿# FreeLauncher
+# FreeLauncher
 
 An Android home screen that restores Nova Launcher backups.
 
