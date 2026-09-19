@@ -1,4 +1,4 @@
-# FreeLauncher
+﻿# FreeLauncher
 
 An Android home screen that restores Nova Launcher backups.
 
@@ -79,3 +79,22 @@ That prints `v1 scheme (JAR signing): false`. It is not missing - with
 ## Requirements
 
 Android 8.0 or later (minSdk 26), built against SDK 36.
+
+## If you want to say thanks
+
+FreeLauncher is free and stays free. There is nothing to unlock, and nothing
+here is gated behind a donation.
+
+If you get use out of it and feel like sending something, these are the only
+addresses I use. Check them character by character - transfers on both chains
+are irreversible.
+
+| Chain | Address |
+|---|---|
+| Solana | `862YZXoRvaoTiP1AkQEEZ5FFGgPFsUhbEoRu4r44RhSe` |
+| Ethereum | `0xF890c6A128920D145D47753D0b1159fA4Db2861d` |
+
+Send only native SOL or ETH, or standard tokens on those chains. Anything sent
+on a different network is lost.
+
+No obligation either way. A bug report is worth just as much.
