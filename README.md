@@ -21,7 +21,7 @@ what is in them, widgets where the same widget is still installed, and icon
 pack choices where that pack is still present.
 
 ## Why a launcher is different from other apps
-buiot with a purpose, a raw application that doesn't communicate with any servers.
+built with a purpose, a raw application that doesn't communicate with any servers.
 'it just works'
 
 ## Verify what you downloaded
