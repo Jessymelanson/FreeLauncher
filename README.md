@@ -2,7 +2,7 @@
 
 An Android home screen that restores Nova Launcher backups.
 
-No accounts, no activation key, no paid tiernon telemetry, nothing to unlock. Install it,
+No accounts, no activation key, no paid tier, no telemetry, nothing to unlock. Install it,
 make it your home screen, and it works.
 
 This repository holds the signed APK. The source is not published here.
@@ -21,8 +21,34 @@ what is in them, widgets where the same widget is still installed, and icon
 pack choices where that pack is still present.
 
 ## Why a launcher is different from other apps
-built with a purpose, a raw application that doesn't communicate with any servers.
-'it just works'
+
+A launcher is the first thing you see every time you unlock the phone, and it
+runs for as long as the phone is on. That makes it the wrong place for account
+prompts, upsells and background reporting.
+
+FreeLauncher cannot talk to a server, and you do not have to take that on trust:
+it does not request the `INTERNET` permission, so Android itself blocks any
+network call the app might attempt. The full set of permissions it asks for is
+local to the device:
+
+| Permission | Why |
+|---|---|
+| `SET_WALLPAPER` | change the wallpaper |
+| `EXPAND_STATUS_BAR` | pull down the status bar with a gesture |
+| `INSTALL_SHORTCUT` | let apps add shortcuts to the home screen |
+| `REQUEST_DELETE_PACKAGES` | uninstall an app by dragging it |
+| `VIBRATE` | haptic feedback |
+| `ACCESS_HIDDEN_PROFILES` | show work and private profile apps |
+| `MODIFY_QUIET_MODE` | pause and resume a work profile |
+
+Check for yourself:
+
+```bash
+aapt dump permissions FreeLauncher-release.apk
+```
+
+Restoring a backup is no exception. The `.novabackup` file is read on the
+device and never leaves it.
 
 ## Verify what you downloaded
 
