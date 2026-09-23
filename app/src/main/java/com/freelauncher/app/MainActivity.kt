@@ -14,7 +14,9 @@ import androidx.core.view.WindowInsetsCompat
 import androidx.core.view.WindowInsetsControllerCompat
 import androidx.compose.runtime.CompositionLocalProvider
 import com.freelauncher.app.ui.common.LocalNotificationDots
+import com.freelauncher.app.data.HomeShell
 import com.freelauncher.app.ui.home.HomeRoot
+import com.freelauncher.app.ui.shells.ShellHost
 import com.freelauncher.app.ui.home.LauncherWidgetHost
 import com.freelauncher.app.ui.theme.FreeLauncherTheme
 
@@ -98,15 +100,29 @@ class MainActivity : ComponentActivity() {
 
             FreeLauncherTheme(settings) {
                 CompositionLocalProvider(LocalNotificationDots provides visibleDots) {
-                    HomeRoot(
-                        settings = settings,
-                        homeResetKey = homeResetKey,
-                        widgetHost = widgetHost,
-                        onOpenSettings = {
-                            startActivity(Intent(this, SettingsActivity::class.java))
-                        },
-                        onConfigureWidget = ::configureWidget,
-                    )
+                    // Which surface is mounted, not how one is styled. The
+                    // alternative shells have no widget host and no drag
+                    // machinery, so they are a different composable rather than
+                    // a branch inside HomeRoot.
+                    if (settings.homeShell == HomeShell.CLASSIC) {
+                        HomeRoot(
+                            settings = settings,
+                            homeResetKey = homeResetKey,
+                            widgetHost = widgetHost,
+                            onOpenSettings = {
+                                startActivity(Intent(this, SettingsActivity::class.java))
+                            },
+                            onConfigureWidget = ::configureWidget,
+                        )
+                    } else {
+                        ShellHost(
+                            shell = settings.homeShell,
+                            settings = settings,
+                            onOpenSettings = {
+                                startActivity(Intent(this, SettingsActivity::class.java))
+                            },
+                        )
+                    }
                 }
             }
         }

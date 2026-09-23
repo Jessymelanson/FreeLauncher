@@ -8,7 +8,9 @@ import com.freelauncher.app.data.AppRepository
 import com.freelauncher.app.data.IconCache
 import com.freelauncher.app.data.LayoutStore
 import com.freelauncher.app.data.NotificationDots
+import com.freelauncher.app.data.RecentApps
 import com.freelauncher.app.data.SettingsStore
+import com.freelauncher.app.data.ShellStore
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -41,6 +43,10 @@ class FreeLauncherApp : Application() {
         private set
     lateinit var layout: LayoutStore
         private set
+    lateinit var shells: ShellStore
+        private set
+    lateinit var recents: RecentApps
+        private set
     lateinit var apps: AppRepository
         private set
     lateinit var icons: IconCache
@@ -60,6 +66,8 @@ class FreeLauncherApp : Application() {
         super.onCreate()
         settings = SettingsStore(this)
         layout = LayoutStore(this)
+        shells = ShellStore(this)
+        recents = RecentApps(this)
         icons = IconCache(this, layout.iconDir)
         apps = AppRepository(this)
 

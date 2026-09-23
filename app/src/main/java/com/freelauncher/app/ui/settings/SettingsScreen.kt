@@ -38,6 +38,7 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Slider
 import androidx.compose.material3.Surface
+import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -67,6 +68,7 @@ import com.freelauncher.app.data.BackupManager
 import com.freelauncher.app.data.DrawerStyle
 import com.freelauncher.app.data.IconPack
 import com.freelauncher.app.data.IconPacks
+import com.freelauncher.app.data.HomeShell
 import com.freelauncher.app.data.IconShape
 import com.freelauncher.app.data.LauncherSettings
 import com.freelauncher.app.data.NotificationDots
@@ -97,7 +99,12 @@ fun SettingsScreen(onBack: () -> Unit) {
     val settings by app.settings.state.collectAsState()
     val apps by app.apps.apps.collectAsState()
 
-    val backups = remember { BackupManager(context, app.layout, app.settings) }
+    // Only used to decide whether to warn that turning the clock off closes the
+    // only route to private space. A device without a private profile has no
+    // such route to close.
+    val privateProfile by app.apps.privateProfile.collectAsState()
+
+    val backups = remember { BackupManager(context, app.layout, app.settings, app.shells) }
     var job by remember { mutableStateOf<Job>(Job.Idle) }
     var showHidden by remember { mutableStateOf(false) }
     var confirmReset by remember { mutableStateOf(false) }
@@ -263,7 +270,8 @@ fun SettingsScreen(onBack: () -> Unit) {
                 ActionRow(
                     title = "Back up this layout",
                     subtitle = "Writes a ${BackupManager.EXTENSION} file with your pages, " +
-                        "dock, folders, settings and custom icons.",
+                        "dock, folders, widgets, settings and custom icons, and your " +
+                        "Windows Phone and Windows 11 tile order and sizes.",
                     icon = Icons.Rounded.CloudUpload,
                 ) {
                     saveBackup.launch(backups.suggestedFileName())
@@ -277,6 +285,35 @@ fun SettingsScreen(onBack: () -> Unit) {
                 ) {
                     restoreBackup.launch(arrayOf("*/*"))
                 }
+            }
+
+            item { SectionHeader("Home style") }
+            item {
+                ChoiceRow(
+                    title = "Home screen",
+                    subtitle = "Every style shows the same home screen apps and shortcuts. " +
+                        "Pin or remove one in any style and the others follow; only the " +
+                        "layout changes when you switch.",
+                    current = settings.homeShell,
+                    options = HomeShell.entries,
+                    label = { it.label },
+                ) { choice -> update { it.copy(homeShell = choice) } }
+            }
+            if (settings.homeShell != HomeShell.CLASSIC) {
+                item {
+                    SwitchRow(
+                        "Show the clock",
+                        settings.shellClock,
+                        subtitle = if (privateProfile != null) {
+                            "A long press on the clock opens private space. These shells " +
+                                "have no drawer, so turning the clock off closes the only " +
+                                "way in to it."
+                        } else {
+                            null
+                        },
+                    ) { v -> update { it.copy(shellClock = v) } }
+                }
+
             }
 
             item { SectionHeader("Look") }
@@ -370,6 +407,18 @@ fun SettingsScreen(onBack: () -> Unit) {
             item {
                 SliderRow("Wallpaper dimming", settings.wallpaperDim, 0f, 0.7f) { v ->
                     update { it.copy(wallpaperDim = v) }
+                }
+            }
+            item {
+                SliderRow(
+                    "Widget padding",
+                    settings.widgetPadding.toFloat(),
+                    0f,
+                    24f,
+                    steps = 11,
+                    format = { "${it.roundToInt()} dp" },
+                ) { v ->
+                    update { it.copy(widgetPadding = (v.roundToInt() / 2) * 2) }
                 }
             }
 
@@ -795,6 +844,8 @@ private fun SliderRow(
     value: Float,
     min: Float,
     max: Float,
+    steps: Int = 15,
+    format: (Float) -> String = { "${(it * 100).roundToInt()}%" },
     onChange: (Float) -> Unit,
 ) {
     Column(Modifier.padding(horizontal = 22.dp, vertical = 8.dp)) {
@@ -804,7 +855,7 @@ private fun SliderRow(
             // fraction of the range would label the default icon size "38%",
             // which reads as something being wrong rather than as normal.
             Text(
-                "${(value * 100).roundToInt()}%",
+                format(value),
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
@@ -815,7 +866,7 @@ private fun SliderRow(
             valueRange = min..max,
             // Stepped rather than continuous, so the same setting can be
             // reproduced deliberately instead of landing on 0.8341 by accident.
-            steps = 15,
+            steps = steps,
         )
     }
 }

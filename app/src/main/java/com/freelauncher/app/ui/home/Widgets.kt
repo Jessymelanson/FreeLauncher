@@ -7,9 +7,9 @@ import android.appwidget.AppWidgetManager
 import android.appwidget.AppWidgetProviderInfo
 import android.content.ComponentName
 import android.content.Context
-import android.graphics.Rect as AndroidRect
 import android.os.Build
 import android.os.Bundle
+import android.util.SizeF
 import android.util.Log
 import android.view.ViewGroup
 import androidx.compose.foundation.background
@@ -98,14 +98,48 @@ class LauncherWidgetHost(context: Context) : AppWidgetHost(context, WIDGET_HOST_
 /**
  * How many grid cells a widget wants.
  *
- * A provider states its minimum size in dp, not in cells, because it has no
- * idea what grid it will land in. Rounding up rather than to nearest matters:
+ * A provider states its size rather than a cell count, because it has no idea
+ * what grid it will land in. Rounding up rather than to nearest matters:
  * a widget given less room than its minimum does not scale down, it clips, and
  * a clipped clock with its right-hand digits missing is the usual symptom.
  */
-fun widgetSpan(info: AppWidgetProviderInfo, cellW: Dp, cellH: Dp): Pair<Int, Int> {
-    val cols = ceil(info.minWidth / cellW.value.coerceAtLeast(1f)).toInt().coerceAtLeast(1)
-    val rows = ceil(info.minHeight / cellH.value.coerceAtLeast(1f)).toInt().coerceAtLeast(1)
+fun widgetSpan(info: AppWidgetProviderInfo, cellW: Dp, cellH: Dp, density: Float): Pair<Int, Int> {
+    // A widget built for Android 12 can say how many cells it wants outright.
+    // That is its author's own answer, so it wins over any arithmetic here.
+    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S &&
+        info.targetCellWidth > 0 && info.targetCellHeight > 0
+    ) {
+        return info.targetCellWidth to info.targetCellHeight
+    }
+    return cellsFor(info.minWidth, info.minHeight, cellW, cellH, density)
+}
+
+/**
+ * The smallest block a widget can be resized down to.
+ *
+ * Its declared minimum resize size, or its default size when it declares none or
+ * declares one larger - the platform reads the fields the same way. Shrinking
+ * below this does not make a widget smaller, it clips it.
+ */
+fun widgetMinSpan(info: AppWidgetProviderInfo, cellW: Dp, cellH: Dp, density: Float): Pair<Int, Int> {
+    val w = info.minResizeWidth.takeIf { it in 1..info.minWidth } ?: info.minWidth
+    val h = info.minResizeHeight.takeIf { it in 1..info.minHeight } ?: info.minHeight
+    return cellsFor(w, h, cellW, cellH, density)
+}
+
+/**
+ * Pixels to cells.
+ *
+ * AppWidgetProviderInfo gives its sizes in **pixels** - the framework converts
+ * the dp in the widget's XML when it reads it. Dividing those pixels by a cell
+ * width in dp overstated every widget by the screen's density, around two and a
+ * half times on a typical phone, so a small clock asked for the whole page and
+ * was clamped to it. Converting back to dp first is the whole fix.
+ */
+private fun cellsFor(widthPx: Int, heightPx: Int, cellW: Dp, cellH: Dp, density: Float): Pair<Int, Int> {
+    val d = density.coerceAtLeast(0.1f)
+    val cols = ceil((widthPx / d) / cellW.value.coerceAtLeast(1f)).toInt().coerceAtLeast(1)
+    val rows = ceil((heightPx / d) / cellH.value.coerceAtLeast(1f)).toInt().coerceAtLeast(1)
     return cols to rows
 }
 
@@ -153,17 +187,14 @@ fun WidgetCell(
             val view: AppWidgetHostView = host.createView(ctx, widgetId, info)
             view.setAppWidget(widgetId, info)
 
-            // The padding the platform says this particular widget wants.
+            // No padding of the platform's own. The space around a widget is
+            // one setting, applied by the caller to every widget alike.
             //
-            // Widgets written before Android 4.0 expect the launcher to inset
-            // them, and plenty of current ones still declare it. Without this
-            // their content runs right into the edge of the cell and touches
-            // the icons either side; with it, they sit where their author
-            // expected. getDefaultPaddingForWidget returns zero for widgets
-            // that handle their own margins, so it is safe to apply to all.
-            val padding = AndroidRect()
-            AppWidgetHostView.getDefaultPaddingForWidget(ctx, info.provider, padding)
-            view.setPadding(padding.left, padding.top, padding.right, padding.bottom)
+            // The platform's suggestion depends on which Android version the
+            // widget was built for, so two widgets side by side sat at visibly
+            // different distances from their cells, and nothing the user could
+            // change moved either of them.
+            view.setPadding(0, 0, 0, 0)
 
             view.layoutParams = ViewGroup.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT,
@@ -192,15 +223,13 @@ fun WidgetCell(
 
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
                 // The modern call takes the exact sizes the widget may be
-                // shown at, which is what lets a responsive widget pick a
-                // layout instead of scaling one.
-                val options = Bundle().apply {
-                    putInt(AppWidgetManager.OPTION_APPWIDGET_MIN_WIDTH, w)
-                    putInt(AppWidgetManager.OPTION_APPWIDGET_MIN_HEIGHT, h)
-                    putInt(AppWidgetManager.OPTION_APPWIDGET_MAX_WIDTH, w)
-                    putInt(AppWidgetManager.OPTION_APPWIDGET_MAX_HEIGHT, h)
+                // shown at, which is what lets a responsive widget pick the
+                // layout meant for that size instead of stretching another.
+                // Setting only the min and max options, as this once did,
+                // leaves the size list empty and such a widget guessing.
+                runCatching {
+                    view.updateAppWidgetSize(Bundle(), listOf(SizeF(w.toFloat(), h.toFloat())))
                 }
-                runCatching { view.updateAppWidgetOptions(options) }
             } else {
                 @Suppress("DEPRECATION")
                 runCatching { view.updateAppWidgetSize(null, w, h, w, h) }
@@ -385,8 +414,8 @@ private fun WidgetRow(
     // Cells, not dp. A widget's own declared size is in density-independent
     // pixels, which tells the user nothing about whether it will fit; what they
     // are deciding is how much of their grid it will take.
-    val (spanX, spanY) = remember(choice.info, cellW, cellH) {
-        widgetSpan(choice.info, cellW, cellH)
+    val (spanX, spanY) = remember(choice.info, cellW, cellH, density.density) {
+        widgetSpan(choice.info, cellW, cellH, density.density)
     }
     var preview by remember(choice.info.provider) {
         mutableStateOf<androidx.compose.ui.graphics.ImageBitmap?>(null)

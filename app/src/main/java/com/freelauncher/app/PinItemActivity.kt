@@ -253,7 +253,7 @@ class PinItemActivity : ComponentActivity() {
         val settings = app.settings.value
         val cellW = resources.configuration.screenWidthDp.dp / settings.desktopCols
         val cellH = (resources.configuration.screenHeightDp.dp * 0.75f) / settings.desktopRows
-        val (wantX, wantY) = widgetSpan(provider, cellW, cellH)
+        val (wantX, wantY) = widgetSpan(provider, cellW, cellH, resources.displayMetrics.density)
         val spanX = wantX.coerceIn(1, settings.desktopCols)
         val spanY = wantY.coerceIn(1, settings.desktopRows)
 

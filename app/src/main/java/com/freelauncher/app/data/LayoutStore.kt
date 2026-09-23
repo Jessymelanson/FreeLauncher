@@ -142,6 +142,114 @@ class LayoutStore(context: Context) {
         }
     }
 
+    // ---- the shared home set ---------------------------------------------
+    //
+    // The alternative home styles do not keep their own list of pinned apps;
+    // they read this layout. These two calls are how they change it, so pinning
+    // or unpinning in any style is the same act as adding to or removing from
+    // the classic home screen, and every style agrees afterwards.
+
+    /**
+     * Items a person could actually see on the home screen: anything on a page or
+     * in the dock, and the contents of folders that are themselves on one. A
+     * child of a folder that no longer exists is not on the home screen in any
+     * sense that matters, so it does not count as the app already being there.
+     */
+    private fun visible(list: List<LauncherItem>): List<LauncherItem> {
+        val top = list.filter { it.container == Container.DESKTOP || it.container == Container.DOCK }
+        val folderIds = top.filter { it.type == ItemType.FOLDER }.map { it.id }.toSet()
+        return top + list.filter { it.container in folderIds }
+    }
+
+    /** True when [key] is on the home screen, anywhere. */
+    fun isOnHome(key: String): Boolean = visible(_items.value).any { homeKey(it) == key }
+
+    /**
+     * Puts an app on the home screen, unless it is already there.
+     *
+     * Placed with [findSlot], exactly as a shortcut pinned from another app is,
+     * so it lands in the first free cell and a full home screen gets a new page
+     * rather than a refusal.
+     */
+    fun addAppToHome(entry: AppEntry, cols: Int, rows: Int): Boolean {
+        if (isOnHome(entry.key)) return false
+        val (screen, x, y) = findSlot(0, cols, rows, _screenCount.value)
+        add(
+            LauncherItem(
+                id = nextId(),
+                type = ItemType.APP,
+                title = entry.label,
+                component = entry.component.flattenToString(),
+                packageName = entry.packageName,
+                userSerial = entry.userSerial,
+                container = Container.DESKTOP,
+                screen = screen,
+                cellX = x,
+                cellY = y,
+            ),
+        )
+        return true
+    }
+
+    /**
+     * Takes everything with [key] off the home screen, and returns how many
+     * records went.
+     *
+     * Every copy goes, not just one: "unpin" in a shell means the app is no
+     * longer on the home screen, and leaving a duplicate on page three would mean
+     * it quietly came back the next time the shells looked.
+     *
+     * A folder is tidied in the same step, by the rule the classic screen already
+     * follows: emptied, it goes; left with one app, it dissolves and that app
+     * takes its cell; otherwise its remaining apps close up. Done here, in one
+     * write, rather than by the caller in several, because a folder half-tidied
+     * between two writes is a folder the next reader can see broken.
+     *
+     * Widgets and folders are never matched - they have no key - so this cannot
+     * take either off the screen.
+     */
+    fun removeFromHome(key: String): Int {
+        val doomed = _items.value.filter {
+            it.type != ItemType.FOLDER && it.type != ItemType.WIDGET && homeKey(it) == key
+        }
+        if (doomed.isEmpty()) return 0
+        val ids = doomed.map { it.id }.toSet()
+        val touchedFolders = doomed.map { it.container }.filter { it >= 0L }.toSet()
+
+        mutate { list ->
+            var next = list.filterNot { it.id in ids }
+            for (folderId in touchedFolders) {
+                val folder = next.firstOrNull { it.id == folderId } ?: continue
+                val left = next.filter { it.container == folderId }
+                    .sortedWith(compareBy({ it.cellY }, { it.cellX }))
+                next = when (left.size) {
+                    0 -> next.filterNot { it.id == folderId }
+                    1 -> {
+                        val survivor = left.first()
+                        next.filterNot { it.id == folderId }.map {
+                            if (it.id != survivor.id) it
+                            else it.copy(
+                                container = folder.container,
+                                screen = folder.screen,
+                                cellX = folder.cellX,
+                                cellY = folder.cellY,
+                            )
+                        }
+                    }
+                    else -> {
+                        val slot = left.withIndex().associate { (i, child) -> child.id to i }
+                        next.map { child ->
+                            val i = slot[child.id] ?: return@map child
+                            child.copy(cellX = i % FOLDER_COLUMNS, cellY = i / FOLDER_COLUMNS)
+                        }
+                    }
+                }
+            }
+            next
+        }
+        return doomed.size
+    }
+
     /** Replace the entire layout -- used by the Nova importer. */
     fun replaceAll(newItems: List<LauncherItem>, screens: Int, nextId: Long) {
         _screenCount.value = screens.coerceAtLeast(1)

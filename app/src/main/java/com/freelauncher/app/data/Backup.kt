@@ -31,6 +31,7 @@ class BackupManager(
     context: Context,
     private val layout: LayoutStore,
     private val settings: SettingsStore,
+    private val shells: ShellStore,
 ) {
     private val appContext = context.applicationContext
 
@@ -74,6 +75,13 @@ class BackupManager(
                 zip.write(settingsJson(settings.value).toString().toByteArray())
                 zip.closeEntry()
 
+                // The Windows Phone and Windows 11 arrangements: tile order and
+                // sizes. Which tiles they show is the layout above, so this is
+                // everything needed to bring every home style back as it was.
+                zip.putNextEntry(ZipEntry(SHELLS))
+                zip.write(shells.exportJson().toString().toByteArray())
+                zip.closeEntry()
+
                 // Only the icons something actually points at. The directory
                 // accumulates orphans over time -- every removed item leaves
                 // one -- and copying those into every backup forever is how a
@@ -97,6 +105,7 @@ class BackupManager(
     fun import(uri: Uri): Result<Summary> = runCatching {
         var layoutJson: JSONObject? = null
         var settingsJson: JSONObject? = null
+        var shellsJson: JSONObject? = null
         var iconCount = 0
 
         val input = appContext.contentResolver.openInputStream(uri)
@@ -110,6 +119,7 @@ class BackupManager(
                     when {
                         entry.name == LAYOUT -> layoutJson = JSONObject(zip.readBytes().decodeToString())
                         entry.name == SETTINGS -> settingsJson = JSONObject(zip.readBytes().decodeToString())
+                        entry.name == SHELLS -> shellsJson = JSONObject(zip.readBytes().decodeToString())
                         entry.name.startsWith("$ICON_DIR/") -> {
                             // Flattened to the bare name so an entry called
                             // ../../databases/x cannot escape the icon folder.
@@ -139,6 +149,9 @@ class BackupManager(
         }
         val screens = parsedLayout.optInt("screens", 1).coerceAtLeast(1)
         layout.replaceAll(items, screens, maxId + 1)
+        // Older backups have no shell arrangements; the shells then keep what
+        // they have, and anything they have not seen goes at the end.
+        shellsJson?.let { shells.importJson(it) }
 
         Summary(items.size, screens, iconCount)
     }.onFailure { Log.e(TAG, "import failed", it) }
@@ -218,6 +231,7 @@ class BackupManager(
         put("defaultPage", s.defaultPage)
         put("dockEnabled", s.dockEnabled)
         put("dockCols", s.dockCols)
+        put("widgetPadding", s.widgetPadding)
         put("dockShowLabels", s.dockShowLabels)
         put("dockBackground", s.dockBackground)
         put("drawerStyle", s.drawerStyle.name)
@@ -231,6 +245,8 @@ class BackupManager(
         put("hiddenApps", JSONArray().apply { s.hiddenApps.forEach { put(it) } })
         put("iconPack", s.iconPack)
         put("notificationDots", s.notificationDots)
+        put("homeShell", s.homeShell.name)
+        put("shellClock", s.shellClock)
 
         // The private space arrangement, which was being left out.
         //
@@ -265,6 +281,7 @@ class BackupManager(
         defaultPage = json.optInt("defaultPage", current.defaultPage).coerceAtLeast(0),
         dockEnabled = json.optBoolean("dockEnabled", current.dockEnabled),
         dockCols = json.optInt("dockCols", current.dockCols).coerceIn(2, 8),
+        widgetPadding = json.optInt("widgetPadding", current.widgetPadding).coerceIn(0, 24),
         dockShowLabels = json.optBoolean("dockShowLabels", current.dockShowLabels),
         dockBackground = json.optBoolean("dockBackground", current.dockBackground),
         drawerStyle = json.enumOr("drawerStyle", current.drawerStyle),
@@ -280,6 +297,8 @@ class BackupManager(
         } ?: current.hiddenApps,
         iconPack = json.optString("iconPack", current.iconPack),
         notificationDots = json.optBoolean("notificationDots", current.notificationDots),
+        homeShell = json.enumOr("homeShell", current.homeShell),
+        shellClock = json.optBoolean("shellClock", current.shellClock),
         privateOrder = json.optJSONArray("privateOrder")?.let { arr ->
             buildList { for (i in 0 until arr.length()) arr.optString(i)?.takeIf { it.isNotEmpty() }?.let(::add) }
         } ?: current.privateOrder,
@@ -287,10 +306,11 @@ class BackupManager(
 
     companion object {
         private const val TAG = "BackupManager"
-        private const val FORMAT_VERSION = 1
+        private const val FORMAT_VERSION = 2
         private const val MANIFEST = "manifest.json"
         private const val LAYOUT = "layout.json"
         private const val SETTINGS = "settings.json"
+        private const val SHELLS = "shells.json"
         private const val ICON_DIR = "icons"
 
         const val EXTENSION = ".flbackup"

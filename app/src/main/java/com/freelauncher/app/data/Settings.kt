@@ -62,6 +62,21 @@ enum class SwipeDownAction(val label: String) {
  * where the column count has updated but the icon size has not.
  */
 data class LauncherSettings(
+    /**
+     * Which home surface to draw.
+     *
+     * Read before the first frame like everything else here, because it decides
+     * which composable is mounted at all, not how one is styled.
+     */
+    val homeShell: HomeShell = HomeShell.CLASSIC,
+
+    /**
+     * Show a clock above the shell, and let a long press on it reach private
+     * space. The alternative shells have no app drawer, so without this there
+     * is no way in to a private profile from them.
+     */
+    val shellClock: Boolean = true,
+
     val themeMode: ThemeMode = ThemeMode.SYSTEM,
     val accent: AccentColor = AccentColor.VIOLET,
 
@@ -92,6 +107,16 @@ data class LauncherSettings(
 
     val dockEnabled: Boolean = true,
     val dockCols: Int = 5,
+
+    /**
+     * Space around every home screen widget, in dp.
+     *
+     * One margin for all of them rather than whatever each widget asks the
+     * platform for. The platform padding depends on which Android version the
+     * widget was built for, so two widgets side by side sat at different
+     * distances from their cells for no reason a person could see or change.
+     */
+    val widgetPadding: Int = 8,
     val dockShowLabels: Boolean = false,
     val dockBackground: Boolean = true,
 
@@ -153,6 +178,8 @@ class SettingsStore(context: Context) {
     val value: LauncherSettings get() = _state.value
 
     private fun read() = LauncherSettings(
+        homeShell = prefs.enumOr("home_shell", HomeShell.CLASSIC),
+        shellClock = prefs.getBoolean("shell_clock", true),
         themeMode = prefs.enumOr("theme_mode", ThemeMode.SYSTEM),
         accent = prefs.enumOr("accent", AccentColor.VIOLET),
         desktopCols = prefs.getInt("desktop_cols", 5),
@@ -167,6 +194,7 @@ class SettingsStore(context: Context) {
         defaultPage = prefs.getInt("default_page", 0),
         dockEnabled = prefs.getBoolean("dock_enabled", true),
         dockCols = prefs.getInt("dock_cols", 5),
+        widgetPadding = prefs.getInt("widget_padding", 8).coerceIn(0, 24),
         dockShowLabels = prefs.getBoolean("dock_labels", false),
         dockBackground = prefs.getBoolean("dock_background", true),
         drawerStyle = prefs.enumOr("drawer_style", DrawerStyle.GRID),
@@ -202,6 +230,8 @@ class SettingsStore(context: Context) {
     fun update(transform: (LauncherSettings) -> LauncherSettings) {
         val next = transform(_state.value)
         prefs.edit().apply {
+            putString("home_shell", next.homeShell.name)
+            putBoolean("shell_clock", next.shellClock)
             putString("theme_mode", next.themeMode.name)
             putString("accent", next.accent.name)
             putInt("desktop_cols", next.desktopCols)
@@ -216,6 +246,7 @@ class SettingsStore(context: Context) {
             putInt("default_page", next.defaultPage)
             putBoolean("dock_enabled", next.dockEnabled)
             putInt("dock_cols", next.dockCols)
+            putInt("widget_padding", next.widgetPadding)
             putBoolean("dock_labels", next.dockShowLabels)
             putBoolean("dock_background", next.dockBackground)
             putString("drawer_style", next.drawerStyle.name)

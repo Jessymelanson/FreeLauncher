@@ -103,6 +103,7 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.IntSize
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Popup
@@ -1350,7 +1351,8 @@ fun RenameDialog(
 }
 
 /**
- * The strip at the top of the screen that a drag can be dropped onto.
+ * The strip at the top of the screen that a drag can be dropped onto, above the
+ * grid and never over it.
  *
  * Only exists while something is being carried. A permanent target would be a
  * delete button sitting under the status bar at all times, which is both clutter
@@ -1360,6 +1362,7 @@ fun RenameDialog(
 fun RemoveTarget(
     active: Boolean,
     ui: HomeUiState,
+    height: Dp,
     modifier: Modifier = Modifier,
 ) {
     AnimatedVisibility(
@@ -1370,10 +1373,13 @@ fun RemoveTarget(
     ) {
         val highlighted = active
         Row(
+            // Across the width of the strip above the grid, because all of that
+            // strip is the target: a drop anywhere up there removes, and a drop
+            // anywhere on the grid never does.
             Modifier
-                .padding(top = 12.dp)
-                .height(46.dp)
-                .widthIn(min = 150.dp)
+                .fillMaxWidth()
+                .padding(horizontal = 16.dp, vertical = 2.dp)
+                .height(height)
                 .clip(RoundedCornerShape(23.dp))
                 .background(
                     if (highlighted) MaterialTheme.colorScheme.error.copy(alpha = 0.92f)

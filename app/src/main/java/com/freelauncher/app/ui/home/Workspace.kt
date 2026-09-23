@@ -3,6 +3,7 @@ package com.freelauncher.app.ui.home
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
+import androidx.compose.foundation.systemGestureExclusion
 import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -264,6 +265,7 @@ private fun WorkspacePage(
                             cellH = cellH,
                             cols = cols,
                             rows = rows,
+                            padding = settings.widgetPadding.dp,
                             modifier = cellModifier,
                             onLongPress = onLongPress,
                             onDragBegin = onDragBegin,
@@ -442,6 +444,7 @@ private fun WidgetHolder(
     cellH: Dp,
     cols: Int,
     rows: Int,
+    padding: Dp,
     modifier: Modifier = Modifier,
     onLongPress: (LauncherItem, Rect) -> Unit,
     onDragBegin: (DragSession, Offset) -> Unit,
@@ -464,10 +467,20 @@ private fun WidgetHolder(
     // tap on that should offer to place a new one. A live widget handles its
     // own taps, so anything reaching here is a tap on its background and must
     // be ignored.
-    val missing = remember(item.widgetId) {
+    val widgetInfo = remember(item.widgetId) {
         runCatching {
             android.appwidget.AppWidgetManager.getInstance(context).getAppWidgetInfo(item.widgetId)
-        }.getOrNull() == null
+        }.getOrNull()
+    }
+    val missing = widgetInfo == null
+
+    // What the widget allows. A widget that declares it cannot be resized in a
+    // direction gets no handle for it, and none can be shrunk below the size its
+    // author said it needs - below that it does not get smaller, it clips.
+    val density = LocalDensity.current.density
+    val resizeMode = widgetInfo?.resizeMode ?: android.appwidget.AppWidgetProviderInfo.RESIZE_BOTH
+    val (minSpanX, minSpanY) = remember(widgetInfo, cellW, cellH, density) {
+        widgetInfo?.let { widgetMinSpan(it, cellW, cellH, density) } ?: (1 to 1)
     }
 
     Box(
@@ -504,12 +517,13 @@ private fun WidgetHolder(
             host = widgetHost,
             widgetId = item.widgetId,
             provider = item.widgetProvider,
-            widthDp = cellW * item.spanX,
-            heightDp = cellH * item.spanY,
-            // Enough of a margin that a widget does not touch the icons
-            // either side of it. The widget's own internal padding is applied
-            // separately, in WidgetCell.
-            modifier = Modifier.fillMaxSize().padding(5.dp),
+            // The size the widget is actually given, after the margin. Telling
+            // it the whole cell block while drawing it inside a smaller one made
+            // it lay out for space it did not have, and its edges were cut off.
+            widthDp = (cellW * item.spanX - padding * 2).coerceAtLeast(1.dp),
+            heightDp = (cellH * item.spanY - padding * 2).coerceAtLeast(1.dp),
+            // The same margin on every widget, from the setting.
+            modifier = Modifier.fillMaxSize().padding(padding),
             onReplace = onReplaceWidget,
         )
 
@@ -520,6 +534,10 @@ private fun WidgetHolder(
                 cellH = cellH,
                 cols = cols,
                 rows = rows,
+                minSpanX = minSpanX,
+                minSpanY = minSpanY,
+                horizontal = resizeMode and android.appwidget.AppWidgetProviderInfo.RESIZE_HORIZONTAL != 0,
+                vertical = resizeMode and android.appwidget.AppWidgetProviderInfo.RESIZE_VERTICAL != 0,
                 onResize = onResize,
             )
         }
@@ -534,6 +552,9 @@ private fun WidgetHolder(
  * to shove a widget off the top of the page; the same result is reachable by
  * moving the widget first and then growing it, which is harder to do by
  * accident.
+ *
+ * A handle only appears for a direction the widget allows, and a widget never
+ * shrinks below [minSpanX] by [minSpanY].
  */
 @Composable
 private fun BoxScope.ResizeFrame(
@@ -542,12 +563,22 @@ private fun BoxScope.ResizeFrame(
     cellH: Dp,
     cols: Int,
     rows: Int,
+    minSpanX: Int,
+    minSpanY: Int,
+    horizontal: Boolean,
+    vertical: Boolean,
     onResize: (LauncherItem, Int, Int) -> Unit,
 ) {
     val density = LocalDensity.current
     val haptics = LocalHapticFeedback.current
     val cellWpx = with(density) { cellW.toPx() }
     val cellHpx = with(density) { cellH.toPx() }
+
+    // The widget as it is now, read at each step of a drag. The handles'
+    // gestures are keyed only on which widget this is: keying them on its span,
+    // as they once were, restarted the gesture the moment the first step changed
+    // the span, so every drag grew or shrank the widget by one cell and stopped.
+    val current by rememberUpdatedState(item)
 
     Box(
         Modifier
@@ -563,63 +594,78 @@ private fun BoxScope.ResizeFrame(
     var accX by remember(item.id) { mutableFloatStateOf(0f) }
     var accY by remember(item.id) { mutableFloatStateOf(0f) }
 
-    val handle = 26.dp
+    // Inside the widget's bounds, not hanging off its edge. A touch outside a
+    // parent's bounds never reaches the child, so the outer part of a handle
+    // that overhung the edge was drawn but could not be grabbed.
+    if (horizontal) {
+        ResizeHandle(Modifier.align(Alignment.CenterEnd), onEnd = { accX = 0f }) { amount ->
+            accX += amount.x
+            val steps = (accX / cellWpx).roundToInt()
+            if (steps != 0) {
+                val now = current
+                val maxX = cols - now.cellX
+                val next = (now.spanX + steps).coerceIn(minSpanX.coerceAtMost(maxX), maxX)
+                if (next != now.spanX) {
+                    haptics.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                    onResize(now, next - now.spanX, 0)
+                }
+                accX -= steps * cellWpx
+            }
+        }
+    }
 
-    // Right edge: width.
+    if (vertical) {
+        ResizeHandle(Modifier.align(Alignment.BottomCenter), onEnd = { accY = 0f }) { amount ->
+            accY += amount.y
+            val steps = (accY / cellHpx).roundToInt()
+            if (steps != 0) {
+                val now = current
+                val maxY = rows - now.cellY
+                val next = (now.spanY + steps).coerceIn(minSpanY.coerceAtMost(maxY), maxY)
+                if (next != now.spanY) {
+                    haptics.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                    onResize(now, 0, next - now.spanY)
+                }
+                accY -= steps * cellHpx
+            }
+        }
+    }
+}
+
+/** A round grab handle with a finger-sized target around it. */
+@Composable
+private fun ResizeHandle(modifier: Modifier, onEnd: () -> Unit, onDrag: (Offset) -> Unit) {
+    val drag by rememberUpdatedState(onDrag)
+    // A drag that ends resets the leftover fraction, so the next one starts
+    // clean rather than half a cell along.
+    val end by rememberUpdatedState(onEnd)
     Box(
-        Modifier
-            .align(Alignment.CenterEnd)
-            .offset(x = handle / 3)
-            .size(handle)
-            .clip(CircleShape)
-            .background(Color.White)
-            .pointerInput(item.id, item.spanX) {
+        modifier
+            .size(44.dp)
+            // Claimed from the system's edge gestures. A widget in the right-hand
+            // column puts this handle inside the back-swipe zone, and with gesture
+            // navigation a drag on it was taken as Back: resize mode closed under
+            // the finger and the widget could not be made narrower at all.
+            .systemGestureExclusion()
+            .pointerInput(Unit) {
                 detectDragGestures(
-                    onDragEnd = { accX = 0f },
-                    onDragCancel = { accX = 0f },
+                    onDragEnd = { end() },
+                    onDragCancel = { end() },
                 ) { change, amount ->
                     change.consume()
-                    accX += amount.x
-                    val steps = (accX / cellWpx).roundToInt()
-                    if (steps != 0) {
-                        val next = (item.spanX + steps).coerceIn(1, cols - item.cellX)
-                        if (next != item.spanX) {
-                            haptics.performHapticFeedback(HapticFeedbackType.TextHandleMove)
-                            onResize(item, next - item.spanX, 0)
-                        }
-                        accX -= steps * cellWpx
-                    }
+                    drag(amount)
                 }
-            }
-    )
-
-    // Bottom edge: height.
-    Box(
-        Modifier
-            .align(Alignment.BottomCenter)
-            .offset(y = handle / 3)
-            .size(handle)
-            .clip(CircleShape)
-            .background(Color.White)
-            .pointerInput(item.id, item.spanY) {
-                detectDragGestures(
-                    onDragEnd = { accY = 0f },
-                    onDragCancel = { accY = 0f },
-                ) { change, amount ->
-                    change.consume()
-                    accY += amount.y
-                    val steps = (accY / cellHpx).roundToInt()
-                    if (steps != 0) {
-                        val next = (item.spanY + steps).coerceIn(1, rows - item.cellY)
-                        if (next != item.spanY) {
-                            haptics.performHapticFeedback(HapticFeedbackType.TextHandleMove)
-                            onResize(item, 0, next - item.spanY)
-                        }
-                        accY -= steps * cellHpx
-                    }
-                }
-            }
-    )
+            },
+        contentAlignment = Alignment.Center,
+    ) {
+        Box(
+            Modifier
+                .size(24.dp)
+                .clip(CircleShape)
+                .background(Color.White)
+                .border(1.dp, Color.Black.copy(alpha = 0.25f), CircleShape),
+        )
+    }
 }
 
 /**

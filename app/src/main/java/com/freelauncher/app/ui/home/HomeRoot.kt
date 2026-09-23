@@ -18,6 +18,11 @@ import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.gestures.draggable
 import androidx.compose.foundation.gestures.rememberDraggableState
 import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.statusBarsIgnoringVisibility
+import androidx.compose.foundation.layout.windowInsetsPadding
+import androidx.compose.foundation.layout.asPaddingValues
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
@@ -101,6 +106,7 @@ private const val MAX_APP_SHORTCUTS = 4
  * up would mean lifting those bounds into a shared holder anyway, which is
  * exactly what [HomeUiState] already is.
  */
+@OptIn(ExperimentalLayoutApi::class)
 @Composable
 fun HomeRoot(
     settings: LauncherSettings,
@@ -135,11 +141,10 @@ fun HomeRoot(
      * alphabetically, so installing an app into private space adds it to the
      * end instead of pushing an arrangement around.
      */
+    // Shared with the other home styles, so a private app sits in the same place
+    // whichever style opened the sheet.
     val orderedPrivateApps = remember(privateApps, settings.privateOrder) {
-        val rank = settings.privateOrder.withIndex().associate { (index, key) -> key to index }
-        privateApps.sortedWith(
-            compareBy({ rank[it.key] ?: Int.MAX_VALUE }, { it.label.lowercase() })
-        )
+        com.freelauncher.app.data.orderPrivateApps(privateApps, settings.privateOrder)
     }
 
     /** An icon whose app has gone: the offer to reinstall it, or to tidy it away. */
@@ -685,7 +690,7 @@ fun HomeRoot(
     fun placeWidget(info: AppWidgetProviderInfo, widgetId: Int) {
         val cols = settings.desktopCols
         val rows = settings.desktopRows
-        val (wantX, wantY) = widgetSpan(info, widgetCellW, widgetCellH)
+        val (wantX, wantY) = widgetSpan(info, widgetCellW, widgetCellH, context.resources.displayMetrics.density)
         val spanX = wantX.coerceIn(1, cols)
         val spanY = wantY.coerceIn(1, rows)
 
@@ -1267,7 +1272,11 @@ fun HomeRoot(
                     scaleX = 1f - 0.04f * drawerProgress
                     scaleY = 1f - 0.04f * drawerProgress
                 }
-                .statusBarsPadding()
+                // The status bar's height even when it is hidden, so there is
+                // always a strip above the grid for the remove target. With the
+                // bar hidden the grid used to start at the very top, leaving
+                // nowhere to drop an icon that was not also a cell.
+                .windowInsetsPadding(WindowInsets.statusBarsIgnoringVisibility)
                 .navigationBarsPadding(),
         ) {
             Workspace(
@@ -1401,13 +1410,20 @@ fun HomeRoot(
 
         // ---- drag furniture ----------------------------------------------
 
+        // In the strip above the grid, which is where a drop removes.
+        val removeStrip = WindowInsets.statusBarsIgnoringVisibility
+            .asPaddingValues().calculateTopPadding()
         Box(
             Modifier
                 .align(Alignment.TopCenter)
-                .statusBarsPadding()
+                .fillMaxWidth()
                 .onGloballyPositioned { ui.removeTargetBounds = it.boundsInWindow() },
         ) {
-            RemoveTarget(active = removeActive, ui = ui)
+            RemoveTarget(
+                active = removeActive,
+                ui = ui,
+                height = (removeStrip - 4.dp).coerceAtLeast(22.dp),
+            )
         }
 
         ui.drag?.let { session ->
@@ -1736,7 +1752,13 @@ fun HomeRoot(
                 canChangeIcon = canChangeIcon,
                 canRename = placedItem != null && placedItem.type != ItemType.WIDGET,
                 hasChosenIcon = placedItem?.chosenIconKey != null,
-                canResize = placedItem?.type == ItemType.WIDGET,
+                // Only for a widget that allows it. One that declares no resize
+                // mode would open a frame whose handles could do nothing.
+                canResize = placedItem?.type == ItemType.WIDGET && runCatching {
+                    android.appwidget.AppWidgetManager.getInstance(context)
+                        .getAppWidgetInfo(placedItem.widgetId)
+                        ?.resizeMode != android.appwidget.AppWidgetProviderInfo.RESIZE_NONE
+                }.getOrDefault(false),
                 onDismiss = { ui.menu = null },
                 onAppInfo = {
                     ui.menu = null
@@ -2062,7 +2084,19 @@ private fun resolveDrop(
 ): DropTarget? {
     val dragged = ui.drag?.item ?: return null
 
-    if (ui.removeTargetBounds.width > 0f && ui.removeTargetBounds.contains(pos)) {
+    // Remove lives above the grid, never on it.
+    //
+    // The target used to be a pill drawn just under the status bar, which put it
+    // on top of the first row of cells, and it was checked before anything else.
+    // Moving an icon along the top row with the finger in the upper part of the
+    // icon - which is where people grip it - dropped it on Remove, and the icon
+    // vanished from the home screen as though it had gone back to the drawer.
+    // Now anything over a cell is a cell. Removing means carrying the icon up
+    // past the grid, into the strip the target is drawn in.
+    val grid = ui.pageBounds
+    val aboveGrid = grid.height > 0f && pos.y < grid.top
+    val onTarget = ui.removeTargetBounds.width > 0f && ui.removeTargetBounds.contains(pos)
+    if (aboveGrid || (grid.height <= 0f && onTarget)) {
         return DropTarget.Remove
     }
 
