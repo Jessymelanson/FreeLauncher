@@ -70,6 +70,16 @@ import kotlin.math.ceil
 import kotlin.math.roundToInt
 
 /**
+ * What pinning a private app to the home screen gives away, said before it is
+ * done. Shared by every home style so the warning reads the same wherever the
+ * pin is offered.
+ */
+const val PRIVATE_PIN_WARNING =
+    "Its icon stays on your home screen while private space is locked, so anyone " +
+        "who sees your screen can tell it's there. Tapping it while locked asks you " +
+        "to unlock first."
+
+/**
  * Private space.
  *
  * Android 15 gives a phone a second, lockable profile whose apps are meant to
@@ -254,7 +264,8 @@ private fun Empty(onOpenSystemSettings: () -> Unit) {
  * rearrange, or let go without moving for its menu. Learning it once should be
  * enough, and there is no third thing a hold could mean here -- an app cannot
  * be dragged out of private space, because which profile it lives in is
- * Android's business and not this launcher's.
+ * Android's business and not this launcher's. Pinning one to the home screen is
+ * in its menu instead, behind a warning, so it is never done by a stray drag.
  */
 @Composable
 private fun Grid(

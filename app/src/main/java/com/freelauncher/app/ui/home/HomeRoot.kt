@@ -74,6 +74,7 @@ import com.freelauncher.app.data.LauncherSettings
 import com.freelauncher.app.data.SwipeDownAction
 import com.freelauncher.app.launcher
 import com.freelauncher.app.ui.drawer.AppDrawer
+import com.freelauncher.app.ui.drawer.PRIVATE_PIN_WARNING
 import com.freelauncher.app.ui.drawer.PrivateSpaceSheet
 import androidx.compose.ui.graphics.asImageBitmap
 import android.content.pm.ShortcutInfo
@@ -152,6 +153,9 @@ fun HomeRoot(
 
     /** An app the user has asked to uninstall, held until they say so twice. */
     var confirmUninstall by remember { mutableStateOf<AppEntry?>(null) }
+
+    /** A private app the user has asked to put on the home screen, until they confirm. */
+    var confirmPrivatePin by remember { mutableStateOf<AppEntry?>(null) }
 
     /** A shortcut whose publisher refused to start it. */
     var deadShortcut by remember { mutableStateOf<LauncherItem?>(null) }
@@ -274,6 +278,17 @@ fun HomeRoot(
     var showPageEditor by remember { mutableStateOf(false) }
     var showWidgetPicker by remember { mutableStateOf(false) }
 
+    /**
+     * The placeholder a widget is being chosen for, by id, or null when the
+     * picker was opened to add one.
+     *
+     * A restored backup keeps each widget's place as a placeholder that says
+     * "Tap to place a widget". The tap opened the ordinary picker with no
+     * memory of where it came from, so the widget chosen went to the first
+     * free space -- somewhere else entirely -- and the placeholder stayed.
+     */
+    var replacingWidget by remember { mutableStateOf<Long?>(null) }
+
     LaunchedEffect(pagerState) {
         snapshotFlow { pagerState.currentPage }.collect { ui.currentPage = it }
     }
@@ -328,6 +343,7 @@ fun HomeRoot(
         ui.endDrag()
         showPageEditor = false
         showWidgetPicker = false
+        replacingWidget = null
 
         // Pressing Home closes private space, every time. It does not re-lock
         // it -- that is the system's business and the user's, and re-locking on
@@ -688,6 +704,21 @@ fun HomeRoot(
     }
 
     fun placeWidget(info: AppWidgetProviderInfo, widgetId: Int) {
+        // Into the placeholder it was chosen for, at the place and size kept for
+        // it, when there is one. Looked up afresh: the layout may have changed
+        // while the bind or configure screen was up.
+        val target = replacingWidget?.let { id ->
+            app.layout.items.value.firstOrNull { it.id == id && it.type == ItemType.WIDGET }
+        }
+        replacingWidget = null
+        if (target != null) {
+            if (target.widgetId != -1) placement?.release(target.widgetId)
+            app.layout.update(
+                target.copy(widgetId = widgetId, widgetProvider = info.provider.flattenToString()),
+            )
+            return
+        }
+
         val cols = settings.desktopCols
         val rows = settings.desktopRows
         val (wantX, wantY) = widgetSpan(info, widgetCellW, widgetCellH, context.resources.displayMetrics.density)
@@ -1129,7 +1160,10 @@ fun HomeRoot(
      */
     BackHandler(enabled = true) {
         when {
-            showWidgetPicker -> showWidgetPicker = false
+            showWidgetPicker -> {
+                showWidgetPicker = false
+                replacingWidget = null
+            }
             showPageEditor -> showPageEditor = false
             ui.menu != null -> ui.menu = null
             showPrivate -> showPrivate = false
@@ -1295,7 +1329,10 @@ fun HomeRoot(
                 onDragBegin = { session, at -> ui.beginDrag(session, at) },
                 onResize = ::resize,
                 showEmptyHint = items.none { it.container == Container.DESKTOP },
-                onReplaceWidget = { showWidgetPicker = true },
+                onReplaceWidget = { placeholder ->
+                    replacingWidget = placeholder.id
+                    showWidgetPicker = true
+                },
             )
 
             if (settings.showPageIndicator) {
@@ -1379,13 +1416,10 @@ fun HomeRoot(
                     showPrivate = false
                     launchApp(entry, bounds)
                 },
-                // Straight to App info, with no menu in between.
-                //
-                // The drawer's menu is wrong here and one of its rows is
-                // actively dangerous: "Add to home screen" would put a private
-                // app's icon on the home screen, where the whole point is that
-                // it does not appear. App info is the useful half of that menu
-                // anyway, and it is the system page that carries Uninstall.
+                // A short menu of its own: App info, which is the system page
+                // that carries Uninstall, and Add to home screen. The second puts
+                // a private app's icon where it stays visible while the space is
+                // locked, so it asks first -- see confirmPrivatePin.
                 onMenu = { entry, anchor -> ui.menu = MenuTarget.Private(entry, anchor) },
 
                 // Written as the whole order rather than a moved pair, so the
@@ -1794,12 +1828,12 @@ fun HomeRoot(
                 onAddToHome = {
                     ui.menu = null
                     entry?.let {
-                        addToHome(it)
-                        closeDrawer()
-                        // A private app's icon is being put somewhere visible,
-                        // so the panel it came from gets out of the way and
-                        // lets the user see where it landed.
-                        showPrivate = false
+                        if (target is MenuTarget.Private) {
+                            confirmPrivatePin = it
+                        } else {
+                            addToHome(it)
+                            closeDrawer()
+                        }
                     }
                 },
                 onResize = {
@@ -1849,6 +1883,7 @@ fun HomeRoot(
                 },
                 onWidgets = {
                     ui.menu = null
+                    replacingWidget = null
                     showWidgetPicker = true
                 },
                 onEditPages = {
@@ -1859,6 +1894,23 @@ fun HomeRoot(
                     ui.menu = null
                     onOpenSettings()
                 },
+            )
+        }
+
+        confirmPrivatePin?.let { entry ->
+            ConfirmDialog(
+                title = "Add ${entry.label} to the home screen?",
+                message = PRIVATE_PIN_WARNING,
+                confirmLabel = "Add anyway",
+                onConfirm = {
+                    confirmPrivatePin = null
+                    addToHome(entry)
+                    closeDrawer()
+                    // The icon is going somewhere visible, so the panel it came
+                    // from gets out of the way and shows where it landed.
+                    showPrivate = false
+                },
+                onDismiss = { confirmPrivatePin = null },
             )
         }
 
@@ -2059,7 +2111,10 @@ fun HomeRoot(
             WidgetPicker(
                 cellW = widgetCellW,
                 cellH = widgetCellH,
-                onDismiss = { showWidgetPicker = false },
+                onDismiss = {
+                    showWidgetPicker = false
+                    replacingWidget = null
+                },
                 onPick = ::beginWidget,
             )
         }

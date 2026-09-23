@@ -194,13 +194,17 @@ fun SettingsScreen(onBack: () -> Unit) {
             job = result.fold(
                 onSuccess = {
                     app.icons.clear()
+                    // The widget note only when there were widgets: said after
+                    // every restore, it read as though something had been lost
+                    // from a layout that never had a widget in it.
+                    val widgetNote = if (it.widgets == 0) "" else
+                        "\n\nWidgets are not restored by a backup, because a widget's " +
+                            "link to the phone that made it cannot be transferred. " +
+                            "Their places are kept; tap one to put a widget back."
                     Job.Done(
                         "Backup restored",
                         "${it.items} items across ${it.screens} " +
-                            "${if (it.screens == 1) "page" else "pages"}.\n\n" +
-                            "Widgets are not restored by a backup, because a widget's " +
-                            "link to the phone that made it cannot be transferred. " +
-                            "Their places are kept; tap one to put a widget back.",
+                            "${if (it.screens == 1) "page" else "pages"}." + widgetNote,
                     )
                 },
                 onFailure = { Job.Failed(it.message ?: "That file could not be restored.") },

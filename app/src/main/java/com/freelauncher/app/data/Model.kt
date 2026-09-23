@@ -148,7 +148,20 @@ data class AppEntry(
     val key: String get() = "${component.flattenToString()}#$userSerial"
 
     companion object {
-        fun keyOf(component: String, userSerial: Long) = "$component#$userSerial"
+        fun keyOf(component: String, userSerial: Long) = "${canonical(component)}#$userSerial"
+
+        /**
+         * One spelling for a component: `pkg/.Main` and `pkg/pkg.Main` name the
+         * same activity, and [key] is built from the long one.
+         *
+         * Layouts written by builds from before the Nova import expanded
+         * relative class names still hold the short spelling. The classic
+         * screen found those apps anyway, by falling back to the package, but
+         * the other home styles match on the key alone -- so an app pinned in a
+         * classic folder was simply missing from Windows Phone and Windows 11.
+         */
+        fun canonical(component: String): String =
+            ComponentName.unflattenFromString(component)?.flattenToString() ?: component
     }
 }
 

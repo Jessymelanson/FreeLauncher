@@ -241,11 +241,14 @@ class AppRepository(context: Context) {
 
             list.sortWith(compareBy(collator) { it.label })
             hidden.sortWith(compareBy(collator) { it.label })
-            _apps.value = list
+            // Private space first. The lookups decide which list to search by
+            // the private serial, so publishing the personal list before it
+            // would let a frame resolve a private icon against the wrong one.
             _privateApps.value = hidden
             _privateProfile.value = privateUser
             _privateSerial.value = privateSerial
             _privateLocked.value = privateUser?.let { quietModeOn(it) } ?: true
+            _apps.value = list
             _loaded.value = true
         }
     }
@@ -369,33 +372,36 @@ class AppRepository(context: Context) {
         runCatching { userManager.getUserForSerialNumber(serial) }.getOrNull() ?: Process.myUserHandle()
 
     /**
-     * Every profile's apps, for resolving something rather than listing it.
+     * True when [userSerial] is this phone's private space.
      *
-     * Splitting private space out of [apps] is about what gets *shown*: the
-     * drawer, the search results, the folder picker. It was never meant to
-     * change what an icon already on the home screen resolves to, and quietly
-     * doing both is a regression -- an icon the user placed months ago stopped
-     * resolving and fell through to the "no such app" placeholder, with no way
-     * to tell that from the app genuinely having been uninstalled.
+     * Private space is resolved on its own terms, never as a fallback. Splitting
+     * it out of [apps] is about what gets *shown*, and an icon deliberately
+     * placed from private space still has to resolve -- but only ever to the
+     * private copy, and nothing else may ever resolve to one.
      *
-     * So lookups read this and lists read [apps]. The personal list comes
-     * first, so an app that exists in both profiles resolves to the personal
-     * copy, which is the one the icon was made from.
+     * That second half is the one that matters. The fallbacks below exist for
+     * backups made on another phone, whose profile serials mean nothing here.
+     * Letting them reach into private space meant that uninstalling the personal
+     * copy of an app that is also in private space quietly turned its home
+     * screen icon into the private one: private icon, private badge, and a tap
+     * that opened the private app -- on the home screen, while locked.
      */
-    private fun lookupLists(): List<List<AppEntry>> = listOf(_apps.value, _privateApps.value)
+    private fun isPrivateSerial(userSerial: Long): Boolean =
+        _privateSerial.value?.let { it == userSerial } ?: false
 
     fun entryFor(component: String?, userSerial: Long): AppEntry? {
         if (component == null) return null
         val key = AppEntry.keyOf(component, userSerial)
-        val lists = lookupLists()
-        return lists.firstNotNullOfOrNull { list -> list.firstOrNull { it.key == key } }
+        if (isPrivateSerial(userSerial)) return _privateApps.value.firstOrNull { it.key == key }
+
+        val personal = _apps.value
+        val canonical = AppEntry.canonical(component)
+        return personal.firstOrNull { it.key == key }
             // Fall back to matching on component alone. An item imported from a
             // backup made on another phone carries that phone's profile serial,
             // which will not match here, and refusing to resolve it would mean
             // a work-profile export lands as a screen full of dead icons.
-            ?: lists.firstNotNullOfOrNull { list ->
-                list.firstOrNull { it.component.flattenToString() == component }
-            }
+            ?: personal.firstOrNull { it.component.flattenToString() == canonical }
     }
 
     fun isInstalled(component: String?, userSerial: Long): Boolean =
@@ -415,12 +421,13 @@ class AppRepository(context: Context) {
      */
     fun entryForPackage(packageName: String?, userSerial: Long): AppEntry? {
         if (packageName.isNullOrEmpty()) return null
-        val lists = lookupLists()
-        return lists.firstNotNullOfOrNull { list ->
-            list.firstOrNull { it.packageName == packageName && it.userSerial == userSerial }
-        } ?: lists.firstNotNullOfOrNull { list ->
-            list.firstOrNull { it.packageName == packageName }
+        // Private space answers only for itself, for the reason on isPrivateSerial.
+        if (isPrivateSerial(userSerial)) {
+            return _privateApps.value.firstOrNull { it.packageName == packageName }
         }
+        val personal = _apps.value
+        return personal.firstOrNull { it.packageName == packageName && it.userSerial == userSerial }
+            ?: personal.firstOrNull { it.packageName == packageName }
     }
 
     // ---- launching -------------------------------------------------------
@@ -504,11 +511,7 @@ class AppRepository(context: Context) {
         // a phone and this only runs after the first attempt has already
         // failed. A shortcut id is unique within its publishing package, so
         // finding it under another profile cannot start the wrong thing.
-        val first = userFor(item.userSerial)
-        val others = runCatching { userManager.userProfiles }.getOrDefault(emptyList())
-            .filterNot { it == first }
-
-        for (user in listOf(first) + others) {
+        for (user in shortcutProfiles(item)) {
             val started = runCatching {
                 launcherApps.startShortcut(pkg, id, bounds, opts, user)
                 true
@@ -618,6 +621,23 @@ class AppRepository(context: Context) {
     }
 
     /**
+     * The profiles to look a pinned shortcut up in: the recorded one first, then
+     * the rest, for the reasons given in startShortcut.
+     *
+     * Private space is never one of "the rest", in either direction. A personal
+     * shortcut must not open the private copy of an app, and a private one must
+     * not open the personal copy.
+     */
+    private fun shortcutProfiles(item: LauncherItem): List<UserHandle> {
+        val privateUser = _privateProfile.value
+        if (isPrivateSerial(item.userSerial)) return listOfNotNull(privateUser)
+        val first = userFor(item.userSerial)
+        val others = runCatching { userManager.userProfiles }.getOrDefault(emptyList())
+            .filterNot { it == first || it == privateUser }
+        return listOf(first) + others
+    }
+
+    /**
      * Why a shortcut did not start.
      *
      * Asked only after starting one has already failed. A launcher cannot read
@@ -645,11 +665,7 @@ class AppRepository(context: Context) {
         val id = item.shortcutId ?: return ShortcutState.UNKNOWN to null
         if (!hasShortcutPermission()) return ShortcutState.UNKNOWN to null
 
-        val first = userFor(item.userSerial)
-        val others = runCatching { userManager.userProfiles }.getOrDefault(emptyList())
-            .filterNot { it == first }
-
-        for (user in listOf(first) + others) {
+        for (user in shortcutProfiles(item)) {
             val query = LauncherApps.ShortcutQuery()
                 .setPackage(pkg)
                 .setShortcutIds(listOf(id))

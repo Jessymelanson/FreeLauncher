@@ -35,7 +35,8 @@ class BackupManager(
 ) {
     private val appContext = context.applicationContext
 
-    class Summary(val items: Int, val screens: Int, val icons: Int)
+    /** [widgets] counts the widget places a restored backup held; zero on export. */
+    class Summary(val items: Int, val screens: Int, val icons: Int, val widgets: Int = 0)
 
     /** `FreeLauncher-2026-09-14.flbackup` */
     fun suggestedFileName(): String {
@@ -153,7 +154,7 @@ class BackupManager(
         // they have, and anything they have not seen goes at the end.
         shellsJson?.let { shells.importJson(it) }
 
-        Summary(items.size, screens, iconCount)
+        Summary(items.size, screens, iconCount, items.count { it.type == ItemType.WIDGET })
     }.onFailure { Log.e(TAG, "import failed", it) }
 
     // ---- mapping ---------------------------------------------------------

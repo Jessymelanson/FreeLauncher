@@ -95,7 +95,7 @@ fun Workspace(
     onDragBegin: (DragSession, Offset) -> Unit,
     onResize: (LauncherItem, Int, Int) -> Unit,
     showEmptyHint: Boolean,
-    onReplaceWidget: () -> Unit,
+    onReplaceWidget: (LauncherItem) -> Unit,
 ) {
     HorizontalPager(
         state = pagerState,
@@ -138,7 +138,7 @@ private fun WorkspacePage(
     onDragBegin: (DragSession, Offset) -> Unit,
     onResize: (LauncherItem, Int, Int) -> Unit,
     showEmptyHint: Boolean,
-    onReplaceWidget: () -> Unit,
+    onReplaceWidget: (LauncherItem) -> Unit,
 ) {
     val cols = settings.desktopCols
     val rows = settings.desktopRows
@@ -449,7 +449,7 @@ private fun WidgetHolder(
     onLongPress: (LauncherItem, Rect) -> Unit,
     onDragBegin: (DragSession, Offset) -> Unit,
     onResize: (LauncherItem, Int, Int) -> Unit,
-    onReplaceWidget: () -> Unit,
+    onReplaceWidget: (LauncherItem) -> Unit,
 ) {
     val haptics = LocalHapticFeedback.current
     val context = LocalContext.current
@@ -499,7 +499,7 @@ private fun WidgetHolder(
             }
             .pointerInput(item.id, missing) {
                 detectLauncherGestures(
-                    onClick = { if (missing) onReplaceWidget() },
+                    onClick = { if (missing) onReplaceWidget(current) },
                     onLongPress = {
                         haptics.performHapticFeedback(HapticFeedbackType.LongPress)
                         onLongPress(current, bounds)
@@ -524,7 +524,7 @@ private fun WidgetHolder(
             heightDp = (cellH * item.spanY - padding * 2).coerceAtLeast(1.dp),
             // The same margin on every widget, from the setting.
             modifier = Modifier.fillMaxSize().padding(padding),
-            onReplace = onReplaceWidget,
+            onReplace = { onReplaceWidget(current) },
         )
 
         if (resizing) {

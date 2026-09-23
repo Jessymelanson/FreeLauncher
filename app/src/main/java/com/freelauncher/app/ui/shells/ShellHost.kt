@@ -38,11 +38,12 @@ import com.freelauncher.app.data.HomeTile
 import com.freelauncher.app.data.ItemType
 import com.freelauncher.app.data.LauncherSettings
 import com.freelauncher.app.data.TileSize
-import com.freelauncher.app.data.homeKey
 import com.freelauncher.app.data.homeTiles
 import com.freelauncher.app.data.orderPrivateApps
 import com.freelauncher.app.launcher
+import com.freelauncher.app.ui.drawer.PRIVATE_PIN_WARNING
 import com.freelauncher.app.ui.drawer.PrivateSpaceSheet
+import com.freelauncher.app.ui.home.ConfirmDialog
 
 /**
  * Mounts whichever alternative shell is selected and gives it what every shell
@@ -72,6 +73,7 @@ fun ShellHost(
     val privateApps by app.apps.privateApps.collectAsState()
     val privateProfile by app.apps.privateProfile.collectAsState()
     val privateLocked by app.apps.privateLocked.collectAsState()
+    val privateSerial by app.apps.privateSerial.collectAsState()
     var showPrivate by remember { mutableStateOf(false) }
 
     // The lists show every app except the ones hidden in settings, exactly as the
@@ -79,11 +81,23 @@ fun ShellHost(
     val listApps = remember(apps, settings.hiddenApps) {
         apps.filterNot { it.key in settings.hiddenApps }
     }
-    val byKey = remember(apps) { apps.associateBy { it.key } }
-    val tiles = remember(items, byKey) {
+    // Resolved exactly as the classic screen resolves an icon, so a tile is here
+    // whenever that icon is drawn there. Looking tiles up by key alone, as this
+    // once did, dropped anything the classic screen found by its fallbacks --
+    // an app stored under an older spelling of its activity, one whose update
+    // renamed that activity -- and an app pinned in a classic folder was simply
+    // missing here. It is also what lets an app pinned from private space show,
+    // since private apps are not in `apps` at all.
+    val tiles = remember(items, apps, privateApps, privateSerial) {
         homeTiles(items) { item ->
             when (item.type) {
-                ItemType.APP -> homeKey(item)?.let { byKey[it]?.label }
+                ItemType.APP -> (
+                    app.apps.entryFor(item.component, item.userSerial)
+                        ?: app.apps.entryForPackage(
+                            item.packageName ?: item.componentName?.packageName,
+                            item.userSerial,
+                        )
+                    )?.label
                 else -> item.title.ifBlank { "Shortcut" }
             }
         }
@@ -93,6 +107,9 @@ fun ShellHost(
     var tileMenu by remember { mutableStateOf<HomeTile?>(null) }
     var appMenu by remember { mutableStateOf<AppEntry?>(null) }
     var privateMenu by remember { mutableStateOf<AppEntry?>(null) }
+
+    /** A private app the user has asked to pin, held until they confirm it. */
+    var confirmPrivatePin by remember { mutableStateOf<AppEntry?>(null) }
 
     // Rearrange mode lives here rather than inside each shell, so the long-press
     // menu can turn it on.
@@ -105,11 +122,27 @@ fun ShellHost(
     // launch is recorded. Private space is left out on purpose: an app behind a
     // lock should not be named on the home screen a moment later.
     val launchTile: (HomeTile, Rect) -> Unit = { tile, bounds ->
-        if (app.apps.launchItem(tile.item, bounds)) {
-            if (tile.item.type == ItemType.APP) app.recents.record(tile.key)
-        } else {
-            Toast.makeText(context, "${tile.label} couldn't be opened", Toast.LENGTH_SHORT).show()
+        val isPrivate = privateSerial != null && tile.item.userSerial == privateSerial
+        when {
+            // A pinned private app while the space is locked. Starting it would
+            // report success and do nothing -- the platform does not fail a start
+            // in quiet mode -- so the sheet opens instead, where Unlock is.
+            isPrivate && privateLocked -> showPrivate = true
+
+            app.apps.launchItem(tile.item, bounds) -> {
+                if (tile.item.type == ItemType.APP && !isPrivate) app.recents.record(tile.key)
+            }
+
+            else -> Toast.makeText(context, "${tile.label} couldn't be opened", Toast.LENGTH_SHORT).show()
         }
+    }
+
+    // App info for the profile the app is actually in. The settings intent by
+    // package name always opens the personal copy's page, which for a private
+    // app is the wrong app's settings, or "not installed".
+    val showAppInfo: (AppEntry?, String?) -> Unit = { entry, packageName ->
+        if (entry != null) app.apps.openAppInfo(entry)
+        else if (packageName != null) openAppInfo(context, packageName)
     }
     val launchApp: (AppEntry, Rect) -> Unit = { entry, bounds ->
         if (app.apps.launchApp(entry, bounds)) app.recents.record(entry.key)
@@ -119,7 +152,7 @@ fun ShellHost(
     // Both are the shared list, so every style follows at once.
     val pin: (AppEntry) -> Unit = { entry ->
         if (app.layout.addAppToHome(entry, settings.desktopCols, settings.desktopRows)) {
-            app.shells.appendEverywhere(entry.key)
+            app.shells.appendEverywhere(entry.key, tiles.map { it.key })
         }
     }
     val unpin: (String) -> Unit = { key ->
@@ -193,7 +226,16 @@ fun ShellHost(
                     }
                 }
                 MenuRow("Rearrange") { close(); editing = true }
-                tile.item.packageName?.let { pkg -> MenuRow("App info") { close(); openAppInfo(context, pkg) } }
+                MenuRow("App info") {
+                    close()
+                    val item = tile.item
+                    val pkg = item.packageName ?: item.componentName?.packageName
+                    showAppInfo(
+                        app.apps.entryFor(item.component, item.userSerial)
+                            ?: app.apps.entryForPackage(pkg, item.userSerial),
+                        pkg,
+                    )
+                }
                 MenuRow("Launcher settings") { close(); onOpenSettings() }
             }
         }
@@ -204,7 +246,7 @@ fun ShellHost(
             ShellMenu(title = entry.label, onDismiss = close) {
                 if (pinned) MenuRow("Unpin from Start") { close(); unpin(entry.key) }
                 else MenuRow("Pin to Start") { close(); pin(entry) }
-                MenuRow("App info") { close(); openAppInfo(context, entry.packageName) }
+                MenuRow("App info") { close(); showAppInfo(entry, entry.packageName) }
                 MenuRow("Launcher settings") { close(); onOpenSettings() }
             }
         }
@@ -235,13 +277,30 @@ fun ShellHost(
             )
         }
 
-        // App info only. "Pin to Start" would put a private app's icon on the
-        // home screen, where the whole point is that it does not appear.
+        // Pinning a private app is allowed, but asked twice: its tile stays on the
+        // home screen while the space is locked, which is the one thing private
+        // space otherwise never does.
         privateMenu?.let { entry ->
             val close = { privateMenu = null }
             ShellMenu(title = entry.label, onDismiss = close) {
-                MenuRow("App info") { close(); openAppInfo(context, entry.packageName) }
+                if (entry.key in pinnedKeys) MenuRow("Unpin from Start") { close(); unpin(entry.key) }
+                else MenuRow("Pin to Start") { close(); confirmPrivatePin = entry }
+                MenuRow("App info") { close(); showAppInfo(entry, entry.packageName) }
             }
+        }
+
+        confirmPrivatePin?.let { entry ->
+            ConfirmDialog(
+                title = "Pin ${entry.label} to Start?",
+                message = PRIVATE_PIN_WARNING,
+                confirmLabel = "Pin anyway",
+                onConfirm = {
+                    confirmPrivatePin = null
+                    pin(entry)
+                    showPrivate = false
+                },
+                onDismiss = { confirmPrivatePin = null },
+            )
         }
     }
 }

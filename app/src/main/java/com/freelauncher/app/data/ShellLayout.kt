@@ -177,11 +177,21 @@ class ShellStore(context: Context) {
         }
     }
 
-    /** Puts [key] at the end of every shell's order, for something just pinned. */
-    fun appendEverywhere(key: String) {
+    /**
+     * Puts [key] at the end of every shell's order, for something just pinned.
+     *
+     * [shown] is what is on the home screen now. The order is written out in full
+     * before the key goes on the end, because tiles an order does not mention sort
+     * *after* every tile it does: appending to an order that was empty -- a shell
+     * never rearranged -- or that predates tiles added since made the new key the
+     * only ranked one, and the tile meant for the end appeared first.
+     */
+    fun appendEverywhere(key: String, shown: List<String>) {
         for (shell in shells) {
             val old = current(shell)
-            write(shell, old.copy(order = (old.order - key) + key))
+            val displayed = old.arrange(shown) { it }.filterNot { it == key }
+            val rest = old.order.filterNot { it == key || it in displayed }
+            write(shell, old.copy(order = displayed + key + rest))
         }
     }
 
