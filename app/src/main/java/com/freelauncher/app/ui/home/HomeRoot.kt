@@ -1346,7 +1346,7 @@ fun HomeRoot(
                         ),
                     contentAlignment = Alignment.Center,
                 ) {
-                    PageIndicator(count = screenCount, current = ui.currentPage)
+                    PageIndicator(count = screenCount, current = { ui.currentPage })
                 }
             }
 

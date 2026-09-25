@@ -12,6 +12,7 @@ import android.os.Bundle
 import android.util.SizeF
 import android.util.Log
 import android.view.ViewGroup
+import android.widget.FrameLayout
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -71,6 +72,85 @@ const val WIDGET_HOST_ID = 0x464C // "FL"
 class LauncherWidgetHost(context: Context) : AppWidgetHost(context, WIDGET_HOST_ID) {
 
     private var listening = false
+
+    /**
+     * One view per widget, made once and kept.
+     *
+     * The home pager composes the page on screen and one either side, and drops
+     * the rest. A widget whose page left that window lost its view, and got a
+     * brand new one when the page came back: another app's layout inflated, its
+     * RemoteViews applied, a list widget's adapter bound across processes, and
+     * its size reported again - which asks the providing app to render the
+     * widget afresh. All of that on the frames of a page swipe. Measured on a
+     * three-page home with four widgets, twelve swipes recreated widget views
+     * eleven times, and that was the stutter.
+     *
+     * Kept here instead, and moved into whichever slot is showing the widget.
+     * Launchers built on Views never had this cost: every page stays attached.
+     * The views go with this host, which goes with the activity, so nothing
+     * outlives the context it was inflated in.
+     */
+    private val views = HashMap<Int, CachedWidget>()
+
+    private class CachedWidget(val view: AppWidgetHostView) {
+        /** Width and height last reported to the widget, in dp. */
+        val reportedSize = intArrayOf(-1, -1)
+    }
+
+    /** The widget's view, from the cache when there is one. */
+    fun viewFor(context: Context, widgetId: Int, info: AppWidgetProviderInfo): AppWidgetHostView =
+        cached(context, widgetId, info).view
+
+    private fun cached(context: Context, widgetId: Int, info: AppWidgetProviderInfo): CachedWidget {
+        views[widgetId]?.let { kept ->
+            if (kept.view.appWidgetInfo?.provider == info.provider) return kept
+        }
+        val view = createView(context, widgetId, info)
+        view.setAppWidget(widgetId, info)
+        // No padding of the platform's own. The space around a widget is one
+        // setting, applied by the caller to every widget alike.
+        //
+        // The platform's suggestion depends on which Android version the widget
+        // was built for, so two widgets side by side sat at visibly different
+        // distances from their cells, and nothing the user could change moved
+        // either of them.
+        view.setPadding(0, 0, 0, 0)
+        return CachedWidget(view).also { views[widgetId] = it }
+    }
+
+    /**
+     * Tells the widget the size it is drawn at, unless it was already told.
+     *
+     * Kept with the view rather than with the composable, so a page scrolling
+     * back into range does not report the same size again. Each report is a
+     * binder call, and most providers answer it by rendering the widget anew.
+     */
+    fun reportSize(context: Context, widgetId: Int, info: AppWidgetProviderInfo, widthDp: Int, heightDp: Int) {
+        val kept = cached(context, widgetId, info)
+        if (kept.reportedSize[0] == widthDp && kept.reportedSize[1] == heightDp) return
+        kept.reportedSize[0] = widthDp
+        kept.reportedSize[1] = heightDp
+        val view = kept.view
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+            // The modern call takes the exact sizes the widget may be shown at,
+            // which is what lets a responsive widget pick the layout meant for
+            // that size instead of stretching another. Setting only the min and
+            // max options, as this once did, leaves the size list empty and such
+            // a widget guessing.
+            runCatching {
+                view.updateAppWidgetSize(Bundle(), listOf(SizeF(widthDp.toFloat(), heightDp.toFloat())))
+            }
+        } else {
+            @Suppress("DEPRECATION")
+            runCatching { view.updateAppWidgetSize(null, widthDp, heightDp, widthDp, heightDp) }
+        }
+    }
+
+    /** A deleted widget's view goes with it. */
+    override fun deleteAppWidgetId(appWidgetId: Int) {
+        views.remove(appWidgetId)?.view?.let { (it.parent as? ViewGroup)?.removeView(it) }
+        super.deleteAppWidgetId(appWidgetId)
+    }
 
     /**
      * startListening throws on some devices when the host has no widgets yet,
@@ -168,9 +248,6 @@ fun WidgetCell(
         runCatching { manager.getAppWidgetInfo(widgetId) }.getOrNull()
     }
 
-    /** Last width and height handed to the widget, so a repeat can be skipped. */
-    val lastPushedSize = remember(widgetId) { intArrayOf(-1, -1) }
-
     if (info == null) {
         // Bound on another phone, or the provider has been uninstalled. Kept as
         // a placeholder rather than dropped, so the space the widget occupied
@@ -183,59 +260,54 @@ fun WidgetCell(
 
     AndroidView(
         modifier = modifier,
-        factory = { ctx ->
-            val view: AppWidgetHostView = host.createView(ctx, widgetId, info)
-            view.setAppWidget(widgetId, info)
-
-            // No padding of the platform's own. The space around a widget is
-            // one setting, applied by the caller to every widget alike.
-            //
-            // The platform's suggestion depends on which Android version the
-            // widget was built for, so two widgets side by side sat at visibly
-            // different distances from their cells, and nothing the user could
-            // change moved either of them.
-            view.setPadding(0, 0, 0, 0)
-
-            view.layoutParams = ViewGroup.LayoutParams(
-                ViewGroup.LayoutParams.MATCH_PARENT,
-                ViewGroup.LayoutParams.MATCH_PARENT,
-            )
-            view
+        // A slot for the widget's view rather than the view itself, because the
+        // view is kept by the host and outlives any one slot. See WidgetSlot.
+        factory = { ctx -> WidgetSlot(ctx, host.viewFor(ctx, widgetId, info)) },
+        update = { slot ->
+            // The size only changes when the grid or the widget's span does, and
+            // the host skips a report that says nothing new. That matters here:
+            // this block runs on every recomposition of the node, and each
+            // report is a call into another process.
+            host.reportSize(slot.context, widgetId, info, widthDp.value.toInt(), heightDp.value.toInt())
         },
-        update = { view ->
-            val w = widthDp.value.toInt()
-            val h = heightDp.value.toInt()
-
-            // Only when the size has actually changed.
-            //
-            // AndroidView's update block runs on every recomposition of this
-            // node, and telling a widget its size is a binder call into another
-            // process. A home screen with four widgets that recomposes during an
-            // animation was making four cross-process calls per frame to say
-            // nothing had changed. The size only moves when the grid or the
-            // widget's span does, which is rarely.
-            if (lastPushedSize[0] != w || lastPushedSize[1] != h) {
-                lastPushedSize[0] = w
-                lastPushedSize[1] = h
-            } else {
-                return@AndroidView
-            }
-
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
-                // The modern call takes the exact sizes the widget may be
-                // shown at, which is what lets a responsive widget pick the
-                // layout meant for that size instead of stretching another.
-                // Setting only the min and max options, as this once did,
-                // leaves the size list empty and such a widget guessing.
-                runCatching {
-                    view.updateAppWidgetSize(Bundle(), listOf(SizeF(w.toFloat(), h.toFloat())))
-                }
-            } else {
-                @Suppress("DEPRECATION")
-                runCatching { view.updateAppWidgetSize(null, w, h, w, h) }
-            }
-        },
+        // A slot being thrown away hands the view back, so the next slot for this
+        // widget can take it without prising it out of a dead one.
+        onRelease = { slot -> slot.letGo() },
     )
+}
+
+/**
+ * The place one composable shows a widget, holding the host's view while it
+ * is on screen.
+ *
+ * A view can have only one parent, and the pager can briefly hold two slots
+ * for the same widget: one being retired with its page, one arriving with the
+ * page's return. So the view goes to whichever slot is attached to the window,
+ * taken from wherever it was when that slot attaches. A retired slot is detached,
+ * so it never takes the view back from the one on screen.
+ */
+private class WidgetSlot(context: Context, private val widget: AppWidgetHostView) : FrameLayout(context) {
+
+    init {
+        layoutParams = ViewGroup.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT)
+        take()
+    }
+
+    override fun onAttachedToWindow() {
+        take()
+        super.onAttachedToWindow()
+    }
+
+    private fun take() {
+        if (widget.parent === this) return
+        (widget.parent as? ViewGroup)?.removeView(widget)
+        addView(widget, LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.MATCH_PARENT))
+    }
+
+    /** Gives the view up, if this slot still has it. */
+    fun letGo() {
+        if (widget.parent === this) removeView(widget)
+    }
 }
 
 @Composable

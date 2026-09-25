@@ -63,9 +63,9 @@ later is the same steps, and installing over the top keeps your data.
 
 ## Verify what you downloaded
 
-| File | SHA-256 |
-|---|---|
-| `FreeLauncher-release.apk` | `23eb9f4b46f2266dfbd309b690a7ae906b4bb2781459b9ac6f65c3c84c39e383` |
+| File | Version | SHA-256 |
+|---|---|---|
+| `FreeLauncher-release.apk` | 1.0.3 | `d7d76fe6afbabcfdf52b33aa9f8eb886aca0f41edc5499f5b53d86dcdbdc7f74` |
 
 ```bash
 sha256sum FreeLauncher-release.apk                    # Linux, macOS, git bash

@@ -729,14 +729,24 @@ private fun EmptyHint(modifier: Modifier = Modifier) {
     }
 }
 
-/** The dots under the workspace. */
+/**
+ * The dots under the workspace.
+ *
+ * [current] is read here, not by the caller. The page number changes half way
+ * through every swipe, and whichever composable reads it recomposes when it
+ * does. Read in the home screen's own body, as it was, that meant the whole
+ * home screen - every page, every icon and every widget - rebuilt in the middle
+ * of the swipe, exactly when a dropped frame shows most. Read here, it is just
+ * the dots.
+ */
 @Composable
 fun PageIndicator(
     count: Int,
-    current: Int,
+    current: () -> Int,
     modifier: Modifier = Modifier,
 ) {
     if (count <= 1) return
+    val current = current()
     Row(
         modifier
             .padding(vertical = 6.dp)
